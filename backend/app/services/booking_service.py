@@ -22,16 +22,51 @@ class BookingService:
         return shop
 
     @classmethod
-    def check_availability(cls, db: Session, date: str, time: str, guests: int) -> bool:
+    def check_availability(cls, db: Session, date: str, time: str, guests: int, seat_type: str = "table") -> bool:
         shop = cls.get_or_create_shop(db)
-        # 同日同時刻の合計予約人数
+        # 全体席数の確認
         existing_res = db.query(Reservation).filter(
             Reservation.date == date,
             Reservation.time == time,
             Reservation.status != "cancelled"
         ).all()
         current_guests = sum(r.guests for r in existing_res)
-        return (current_guests + guests) <= shop.total_seats
+        if (current_guests + guests) > shop.total_seats:
+            return False
+
+        # 個室指定の場合の個室在庫チェック
+        if seat_type == "private":
+            private_res = [r for r in existing_res if r.seat_type == "private"]
+            current_private_guests = sum(r.guests for r in private_res)
+            if (current_private_guests + guests) > shop.private_rooms:
+                return False
+
+        return True
+
+    @classmethod
+    def check_seat_type_availability(
+        cls, db: Session, date: str, time: str, guests: int, requested_seat_type: str
+    ) -> Dict[str, Any]:
+        """
+        特定の席種（特に個室）の空きを判定し、満室だがテーブル席なら空いている場合に
+        代替席種（ボックス席・テーブル席）を提案する
+        """
+        shop = cls.get_or_create_shop(db)
+        is_requested_avail = cls.check_availability(db, date, time, guests, seat_type=requested_seat_type)
+        if is_requested_avail:
+            return {"is_available": True, "suggested_alternative_seat": None}
+
+        # もし個室希望で満室の場合、テーブル席に空きがあるか探索
+        if requested_seat_type == "private":
+            is_table_avail = cls.check_availability(db, date, time, guests, seat_type="table")
+            if is_table_avail:
+                return {
+                    "is_available": False,
+                    "reason": "private_full",
+                    "suggested_alternative_seat": "奥の落ち着いたテーブル席（ボックス席）"
+                }
+
+        return {"is_available": False, "reason": "full", "suggested_alternative_seat": None}
 
     @classmethod
     def check_availability_and_find_alternatives(

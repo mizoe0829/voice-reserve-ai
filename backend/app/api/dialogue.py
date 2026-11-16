@@ -19,7 +19,10 @@ def handle_dialogue(req: DialogueRequest, db: Session = Depends(get_db)):
         message=req.message,
         current_slots=req.current_slots,
         stage=req.stage,
-        availability_checker=lambda d, t, g: BookingService.check_availability_and_find_alternatives(db, d, t, g)
+        availability_checker=lambda d, t, g, s="table": (
+            BookingService.check_seat_type_availability(db, d, t, g, s) if s == "private"
+            else BookingService.check_availability_and_find_alternatives(db, d, t, g)
+        )
     )
 
     # 確定または追加ヒアリング完了時のDB登録

@@ -55,6 +55,10 @@ SYSTEM_INSTRUCTION = """あなたは人気焼鳥店「炭火焼鳥 鳥神（と�
    - 金曜日・土曜日、または18:00〜20:30の混雑時間帯の予約の場合:
      - 確定前に必ず「混雑時間帯のため、お席のご利用は2時間制（ラストオーダー90分）とさせていただいておりますが、ご了承いただけますでしょうか？」とお客様に合意を取ってください。
      - お客様から承諾（「はい」「大丈夫」「了解」等）を得てから予約確定（`stage: "confirmed"`）に進んでください。
+5. **個室満室時の代替席種（テーブル・ボックス席）提案 (ケースC)**:
+   - お客様が「個室で」「個室希望」と仰った際、個室が満室の場合:
+     - 「大変申し訳ございません、あいにくご希望のお時間は個室が満室をいただいておりまして…！もしよろしければ、比較的静かな奥のテーブル席（ボックス席）でしたらお席をご用意できますが、いかがでしょうか？」と丁寧に代替席を提案してください。
+     - お客様が「じゃあテーブルで」「それで大丈夫」と承諾されたら `seat_type = "table"` に更新して対話を継続してください。
 
 【対話進行のルール】
 1. **フェーズ1: 基本予約ヒアリング (`hearing`)**
@@ -156,26 +160,44 @@ class VoiceAgentService:
 
         # 空席チェック & 満枠時の代替枠探索
         if merged_slots.date and merged_slots.time and merged_slots.guests and availability_checker:
-            avail_result = availability_checker(merged_slots.date, merged_slots.time, merged_slots.guests)
+            try:
+                avail_result = availability_checker(merged_slots.date, merged_slots.time, merged_slots.guests, merged_slots.seat_type)
+            except TypeError:
+                avail_result = availability_checker(merged_slots.date, merged_slots.time, merged_slots.guests)
+
             if not avail_result.get("is_available", True):
                 is_slot_available = False
                 alternative_slots = avail_result.get("alternatives", [])
-                # 満枠時は確定ステージに進めない
                 new_stage = "hearing"
-                
-                # 満枠時の代替提案プロンプトで返答を再生成
-                alts_str = "、または".join(alternative_slots) if alternative_slots else "別のお日にち"
-                refusal_prompt = f"""【緊急指令: 空席照会結果】
+
+                # 個室満室時の代替席種提案 (ケースC)
+                if avail_result.get("reason") == "private_full":
+                    alt_seat = avail_result.get("suggested_alternative_seat", "奥の落ち着いたテーブル席（ボックス席）")
+                    refusal_prompt = f"""【席種照会結果: 個室満室】
+お客様が希望された個室（{merged_slots.date} {merged_slots.time}、{merged_slots.guests}名）は現在満室です！
+ただし代替として「{alt_seat}」でしたらお席をご用意できます。
+
+お客様に個室が満室であることを丁寧にお詫びし、「{alt_seat}」でしたらご用意できる旨をご提案してください。
+予約確定には進まないでください。"""
+                    alt_resp = self._call_gemini(refusal_prompt, sys_inst)
+                    if alt_resp and alt_resp.get("reply_text"):
+                        reply_text = alt_resp["reply_text"]
+                    else:
+                        reply_text = f"大変申し訳ございません！あいにくそのお時間は個室が満室をいただいております。もしよろしければ、{alt_seat}でしたらお席をご用意できますが、いかがでしょうか？"
+                else:
+                    # 日時満席時の代替提案プロンプト
+                    alts_str = "、または".join(alternative_slots) if alternative_slots else "別のお日にち"
+                    refusal_prompt = f"""【緊急指令: 空席照会結果】
 お客様が希望された日時（{merged_slots.date} {merged_slots.time}、{merged_slots.guests}名）は現在満席で予約できません！
 案内可能な代替枠: {alts_str}
 
 お客様に希望時間が満席であることを丁寧にお詫びした上で、上記の代替候補枠（{alts_str}）をご提案してください。
 予約確定（confirmed）には絶対にしないでください。親切かつ聞き取りやすい音声テキストで返答してください。"""
-                alt_resp = self._call_gemini(refusal_prompt, sys_inst)
-                if alt_resp and alt_resp.get("reply_text"):
-                    reply_text = alt_resp["reply_text"]
-                else:
-                    reply_text = f"大変申し訳ございません！あいにく{merged_slots.time}のお時間は満席をいただいております。もしよろしければ、{alts_str}でしたらお席をご用意できますが、いかがでしょうか？"
+                    alt_resp = self._call_gemini(refusal_prompt, sys_inst)
+                    if alt_resp and alt_resp.get("reply_text"):
+                        reply_text = alt_resp["reply_text"]
+                    else:
+                        reply_text = f"大変申し訳ございません！あいにく{merged_slots.time}のお時間は満席をいただいております。もしよろしければ、{alts_str}でしたらお席をご用意できますが、いかがでしょうか？"
 
         is_confirmed = (new_stage in ["confirmed", "additional_inquiry", "completed"]) and is_slot_available
 
@@ -265,6 +287,16 @@ class VoiceAgentService:
             elif "ベビーカー" in message:
                 slots["special_requests"] = "お子様連れ（ベビーカーあり、子供用食器希望）"
             reply = "お子様連れでのご来店ですね、大歓迎です！ベビーカーを横付けできるよう広めのテーブル席をご用意いたしますね。子供用食器もお出ししておきます！"
+
+        # 個室満室時の代替席種提案 (ケースC)
+        if ("ボックス" in message or "テーブル" in message) and ("個室" not in message or "テーブルで" in message or "テーブル席" in message):
+            slots["seat_type"] = "table"
+            reply = "奥のテーブル席でご了承いただき、ありがとうございます！お席を確保いたしますね。"
+            return {"reply_text": reply, "slots": slots, "stage": new_stage}
+        elif "個室" in message and not any(w in message for w in ["料金", "別料金", "かかる", "無料"]):
+            slots["seat_type"] = "private"
+            reply = "個室のご希望ですね！あいにくそのお時間は個室が満室をいただいております…！もしよろしければ、比較的静かな奥のテーブル席（ボックス席）でしたらお席をご用意できますが、いかがでしょうか？"
+            return {"reply_text": reply, "slots": slots, "stage": new_stage}
 
         if "コース" in message or "飲み放題" in message:
             slots["course_name"] = "2時間飲み放題付き 極み炭火焼鳥コース"

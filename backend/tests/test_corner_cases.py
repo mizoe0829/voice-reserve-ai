@@ -167,7 +167,7 @@ def test_children_and_stroller_handling():
     agent = VoiceAgentService()
 
     res = agent.process_utterance(
-        message="大人3人と、幼稚園の子供が1人いて、ベビーカーも1台持っていきたいんですけど予約できますか？",
+        message="大人3人と、2歳の子供が1人いて、ベビーカーも1台持っていきたいんですけど予約できますか？",
         current_slots=None,
         stage="hearing"
     )
@@ -221,3 +221,71 @@ def test_peak_hours_two_hour_rule_agreement():
 
     assert res2.is_confirmed is True or res2.stage in ["confirmed", "additional_inquiry"]
     print(f"[Test B 2時間制承諾後]:\nAI応答: {res2.reply_text}\nステージ: {res2.stage}")
+
+
+def test_private_room_alternative_table_proposal():
+    """
+    飲食コーナーケース C: 「個室希望」と満室時の代替席種（テーブル・ボックス席）提案
+    1. DB上で個室（8席分）を満室にする
+    2. ユーザーが「個室で4名予約したい」と発話
+    3. システムが個室満室を検知し、代替として「奥の落ち着いたテーブル席（ボックス席）」を提案
+    4. ユーザーが「じゃあテーブル席でいいですよ」と承諾した場合、seat_type が table に切り替わる
+    """
+    db: Session = SessionLocal()
+    shop = BookingService.get_or_create_shop(db)
+    target_date = "2026-11-20"
+    target_time = "19:00"
+
+    # 個室を満室にする予約を登録
+    full_priv = Reservation(
+        booking_code="RSV-PRIV99",
+        date=target_date,
+        time=target_time,
+        guests=shop.private_rooms,  # 8席満室
+        seat_type="private",
+        customer_name="VIP様",
+        status="confirmed"
+    )
+    db.add(full_priv)
+    db.commit()
+
+    agent = VoiceAgentService()
+    checker = lambda d, t, g, s="table": (
+        BookingService.check_seat_type_availability(db, d, t, g, s) if s == "private"
+        else BookingService.check_availability_and_find_alternatives(db, d, t, g)
+    )
+
+    current_slots = SlotState(
+        date=target_date,
+        time=target_time,
+        guests=4,
+        seat_type="private"
+    )
+
+    res1 = agent.process_utterance(
+        message="大事な会食なので、できれば個室でお願いしたいのですが空いてますか？",
+        current_slots=current_slots,
+        stage="hearing",
+        availability_checker=checker
+    )
+
+    reply1 = res1.reply_text
+    assert "個室" in reply1
+    assert "テーブル" in reply1 or "ボックス" in reply1 or "お席" in reply1
+    print(f"\n[Test C 個室満室時の代替席種提案]:\nAI応答: {reply1}")
+
+    # ユーザーがテーブル席を受け入れ
+    res2 = agent.process_utterance(
+        message="なるほど、個室は埋まってるんですね。では奥のテーブル席でお願いします！",
+        current_slots=res1.updated_slots,
+        stage=res1.stage,
+        availability_checker=checker
+    )
+
+    assert res2.updated_slots.seat_type in ["table", "box"]
+    print(f"[Test C 代替席受諾後]:\n席種: {res2.updated_slots.seat_type}\nAI応答: {res2.reply_text}")
+
+    # クリーンアップ
+    db.delete(full_priv)
+    db.commit()
+    db.close()
