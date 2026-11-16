@@ -22,6 +22,7 @@ export const BookingCalendar: React.FC = () => {
   const [reservations, setReservations] = useState<ReservationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeView, setActiveView] = useState<'kitchen' | 'list'>('kitchen');
+  const [showCancelled, setShowCancelled] = useState(false); // キャンセル済み表示トグル（デフォルト非表示）
 
   const fetchReservations = () => {
     setLoading(true);
@@ -40,6 +41,16 @@ export const BookingCalendar: React.FC = () => {
   useEffect(() => {
     fetchReservations();
   }, []);
+
+  // フロントエンド表示用のフィルタリング:
+  // 厨房伝票ビュー: キャンセル分は誤調理防止のため【常に完全除外】
+  // 一覧テーブル: showCancelled が false の場合は除外（フロントから削除）
+  const displayedReservations = reservations.filter((r) => {
+    if (activeView === 'kitchen') {
+      return r.status !== 'cancelled';
+    }
+    return showCancelled ? true : r.status !== 'cancelled';
+  });
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">
@@ -89,6 +100,24 @@ export const BookingCalendar: React.FC = () => {
         </div>
       </div>
 
+      {/* 一覧テーブル時のキャンセル表示トグルバー */}
+      {activeView === 'list' && (
+        <div className="flex items-center justify-between bg-slate-900/70 px-4 py-2.5 rounded-xl border border-slate-800 text-xs">
+          <span className="text-slate-400">
+            有効な予約件数: <span className="font-bold text-slate-100">{reservations.filter(r => r.status !== 'cancelled').length}</span> 件
+          </span>
+          <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100 select-none">
+            <input
+              type="checkbox"
+              checked={showCancelled}
+              onChange={(e) => setShowCancelled(e.target.checked)}
+              className="rounded bg-slate-800 border-slate-700 text-orange-500 focus:ring-0"
+            />
+            <span className="text-xs">キャンセル済み予約も含めて表示</span>
+          </label>
+        </div>
+      )}
+
       {/* 将来のGoogle Maps連携ステータスバナー */}
       <div className="bg-slate-900/60 rounded-xl border border-slate-800/80 p-4 flex items-center justify-between text-xs text-slate-400">
         <div className="flex items-center gap-2">
@@ -102,15 +131,15 @@ export const BookingCalendar: React.FC = () => {
         </span>
       </div>
 
-      {/* 1. 厨房・ホール伝票ビュー */}
+      {/* 1. 厨房・ホール伝票ビュー（キャンセル分は常に除外） */}
       {activeView === 'kitchen' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reservations.length === 0 ? (
+          {displayedReservations.length === 0 ? (
             <div className="col-span-full py-16 text-center text-slate-500 text-sm">
-              現在確定した予約はありません。音声予約ボットから予約を行ってください。
+              現在有効な予約はありません。音声予約ボットから予約を行ってください。
             </div>
           ) : (
-            reservations.map((r) => (
+            displayedReservations.map((r) => (
               <div
                 key={r.id}
                 className="bg-slate-900/90 rounded-xl border border-slate-800 p-5 shadow-lg flex flex-col justify-between gap-4"
@@ -224,28 +253,56 @@ export const BookingCalendar: React.FC = () => {
                 <th className="py-3 px-3">アレルギー</th>
                 <th className="py-3 px-3">事前注文</th>
                 <th className="py-3 px-3">特記事項・配慮</th>
+                <th className="py-3 px-3 text-center">状態</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {reservations.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-800/30">
-                  <td className="py-3 px-3 font-mono font-bold text-orange-400">{r.booking_code}</td>
-                  <td className="py-3 px-3 font-mono">{r.date} {r.time}</td>
-                  <td className="py-3 px-3 text-center font-bold">{r.guests}名</td>
-                  <td className="py-3 px-3 font-semibold">{r.customer_name}</td>
-                  <td className="py-3 px-3 font-mono text-slate-400">{r.phone_number}</td>
-                  <td className="py-3 px-3 max-w-[150px] truncate">{r.course_name}</td>
-                  <td className="py-3 px-3 text-red-400 font-bold">
-                    {r.allergies?.join(', ') || '-'}
-                  </td>
-                  <td className="py-3 px-3 text-orange-300">
-                    {r.pre_orders?.map((p) => `${p.name}x${p.quantity}`).join(', ') || '-'}
-                  </td>
-                  <td className="py-3 px-3 text-blue-300">
-                    {r.special_requests || '-'}
+              {displayedReservations.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-500">
+                    表示できる予約がありません。
                   </td>
                 </tr>
-              ))}
+              ) : (
+                displayedReservations.map((r) => {
+                  const isCancelled = r.status === 'cancelled';
+                  return (
+                    <tr
+                      key={r.id}
+                      className={`hover:bg-slate-800/30 transition-colors ${
+                        isCancelled ? 'opacity-40 line-through bg-red-950/10' : ''
+                      }`}
+                    >
+                      <td className="py-3 px-3 font-mono font-bold text-orange-400">{r.booking_code}</td>
+                      <td className="py-3 px-3 font-mono">{r.date} {r.time}</td>
+                      <td className="py-3 px-3 text-center font-bold">{r.guests}名</td>
+                      <td className="py-3 px-3 font-semibold">{r.customer_name}</td>
+                      <td className="py-3 px-3 font-mono text-slate-400">{r.phone_number}</td>
+                      <td className="py-3 px-3 max-w-[150px] truncate">{r.course_name}</td>
+                      <td className="py-3 px-3 text-red-400 font-bold">
+                        {r.allergies?.join(', ') || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-orange-300">
+                        {r.pre_orders?.map((p) => `${p.name}x${p.quantity}`).join(', ') || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-blue-300">
+                        {r.special_requests || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {isCancelled ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                            キャンセル済
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            確定
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
