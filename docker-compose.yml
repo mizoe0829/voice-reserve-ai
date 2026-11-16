@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -14,6 +12,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - SHOP_PRESET=${SHOP_PRESET:-yakitori}
       - DATABASE_URL=sqlite:///./data/voice_reserve.db
     restart: unless-stopped
 
@@ -27,3 +26,4 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
