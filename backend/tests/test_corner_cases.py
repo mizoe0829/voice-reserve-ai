@@ -182,3 +182,42 @@ def test_children_and_stroller_handling():
     reply = res.reply_text
     assert "テーブル" in reply or "お席" in reply or "お子様" in reply
     print(f"\n[Test A 子連れ・ベビーカー対応]:\nスロット: guests={res.updated_slots.guests}, seat={res.updated_slots.seat_type}, special={res.updated_slots.special_requests}\nAI応答: {reply}")
+
+
+def test_peak_hours_two_hour_rule_agreement():
+    """
+    飲食コーナーケース B: 週末・混雑ピーク帯の「2時間制ルール」事前合意
+    - 金曜19:00の予約において、確定直前に「2時間制（L.O. 90分）」の合意を取り付ける
+    - ユーザーが承諾（「大丈夫です」）するまで確定（confirmed）に進まない
+    """
+    agent = VoiceAgentService()
+
+    # 1. 金曜19時・お名前までのヒアリング
+    slots_before_confirm = SlotState(
+        date="2026-11-20", # 金曜
+        time="19:00",
+        guests=4,
+        seat_type="table",
+        course_name="2時間飲み放題付き 極み炭火焼鳥コース"
+    )
+
+    res1 = agent.process_utterance(
+        message="予約者は佐藤、電話番号は090-1234-5678です",
+        current_slots=slots_before_confirm,
+        stage="hearing"
+    )
+
+    # 2時間制の確認が入るため、まだ confirmed にならない
+    reply1 = res1.reply_text
+    assert "2時間" in reply1 or "時間制" in reply1 or "混雑" in reply1 or "90分" in reply1
+    print(f"\n[Test B 2時間制ルール確認]:\nAI応答: {reply1}\nステージ: {res1.stage}")
+
+    # 2. ユーザーが承諾したことで確定へ遷移
+    res2 = agent.process_utterance(
+        message="はい、2時間制で大丈夫です！よろしくお願いします。",
+        current_slots=res1.updated_slots,
+        stage=res1.stage
+    )
+
+    assert res2.is_confirmed is True or res2.stage in ["confirmed", "additional_inquiry"]
+    print(f"[Test B 2時間制承諾後]:\nAI応答: {res2.reply_text}\nステージ: {res2.stage}")
