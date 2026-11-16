@@ -17,8 +17,9 @@ def build_system_instruction(
 ) -> str:
     """店舗・施設設定に応じた動的システムプロンプトを生成"""
     if shop:
-        shop_name = shop.name or "予約店舗"
-        industry_type = shop.industry_type or "飲食店"
+        industry_type = shop.industry_type or "restaurant"
+        default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
+        shop_name = shop.name if shop.name else default_name
         open_time = shop.open_time or "17:00"
         close_time = shop.close_time or "23:30"
         persona_desc = shop.persona_description or "親切で優秀なAI音声予約コンシェルジュ"
@@ -28,8 +29,9 @@ def build_system_instruction(
         add_prompt = shop.additional_inquiry_prompt or "ご同席の皆様でアレルギーや苦手な食材、または事前にご用意できるお料理やお飲み物のご希望はございますか？"
     else:
         cfg = get_preset_config(get_active_preset_key())
-        shop_name = cfg["name"]
         industry_type = cfg["industry_type"]
+        default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
+        shop_name = cfg["name"] if cfg["name"] else default_name
         open_time = cfg["open_time"]
         close_time = cfg["close_time"]
         persona_desc = cfg["persona_description"]
@@ -304,12 +306,16 @@ class VoiceAgentService:
     ) -> Dict[str, Any]:
         """オフライン用モック（店舗名やコース・FAQを動的反映）"""
         if shop:
-            shop_name = shop.name or "当店"
+            industry_type = shop.industry_type or "restaurant"
+            default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
+            shop_name = shop.name if shop.name else default_name
             courses = shop.courses_json or []
             faqs = shop.faqs_json or {}
         else:
             cfg = get_preset_config(get_active_preset_key())
-            shop_name = cfg["name"]
+            industry_type = cfg.get("industry_type", "restaurant")
+            default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
+            shop_name = cfg["name"] if cfg.get("name") else default_name
             courses = cfg["courses"]
             faqs = cfg["faqs"]
 
