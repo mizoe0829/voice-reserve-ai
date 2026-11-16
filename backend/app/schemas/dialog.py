@@ -27,3 +27,4 @@ class DialogueResponse(BaseModel):
     booking_code: Optional[str] = None
     is_slot_available: bool = True
     alternative_slots: List[str] = []
+    action: Optional[str] = None  # None, "modify", "cancel"

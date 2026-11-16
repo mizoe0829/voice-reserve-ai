@@ -163,3 +163,24 @@ class BookingService:
     @classmethod
     def get_reservation_by_code(cls, db: Session, booking_code: str) -> Optional[Reservation]:
         return db.query(Reservation).filter(Reservation.booking_code == booking_code).first()
+
+    @classmethod
+    def find_reservation_by_name(cls, db: Session, name: str, date: Optional[str] = None) -> Optional[Reservation]:
+        """名前（および日付）から既存予約を検索"""
+        q = db.query(Reservation).filter(
+            Reservation.status != "cancelled",
+            Reservation.customer_name.contains(name)
+        )
+        if date:
+            q = q.filter(Reservation.date == date)
+        return q.order_by(Reservation.created_at.desc()).first()
+
+    @classmethod
+    def cancel_reservation(cls, db: Session, reservation_id: int) -> bool:
+        """予約のキャンセル処理"""
+        res = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        if res:
+            res.status = "cancelled"
+            db.commit()
+            return True
+        return False

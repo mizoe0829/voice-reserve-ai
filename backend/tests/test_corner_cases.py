@@ -320,3 +320,61 @@ def test_anniversary_birthday_plate_support():
     assert "おめでとう" in reply or "お祝い" in reply or "プレート" in reply or "デザート" in reply or "誕生日" in reply
     assert res.updated_slots.special_requests is not None or len(res.updated_slots.pre_orders) > 0
     print(f"\n[Test D 記念日・誕生日プレート対応]:\nAI応答: {reply}\n特記事項: {res.updated_slots.special_requests}\nプレオーダー: {res.updated_slots.pre_orders}")
+
+
+def test_existing_reservation_modification_and_cancellation():
+    """
+    飲食コーナーケース E: 「今日予約した田中だけど1人増やせる？」既存予約の変更・キャンセル対応
+    1. DB上に「田中 太郎 4名 19:00」の既存予約を登録
+    2. 人数変更の発話: 「今日19時で予約してる田中ですが、1人増えて5人になっても大丈夫ですか？」
+       -> action='modify', guests=5, AIが4名→5名への変更を案内
+    3. キャンセルの発話: 「今日19時で予約してる田中ですが、キャンセルでお願いします」
+       -> action='cancel', AIがキャンセル受諾を案内
+    """
+    db: Session = SessionLocal()
+    target_date = datetime.date.today().isoformat()
+
+    # 1. 既存予約を作成
+    existing_res = Reservation(
+        booking_code="RSV-TANAKA01",
+        date=target_date,
+        time="19:00",
+        guests=4,
+        seat_type="table",
+        customer_name="田中 太郎",
+        phone_number="090-1111-2222",
+        status="confirmed"
+    )
+    db.add(existing_res)
+    db.commit()
+
+    agent = VoiceAgentService()
+
+    # 2. 人数変更
+    res_mod = agent.process_utterance(
+        message="今日19時で予約してる田中ですが、1人増えて5人になっても大丈夫ですか？",
+        current_slots=None,
+        stage="hearing"
+    )
+
+    assert res_mod.action == "modify" or res_mod.updated_slots.guests == 5
+    reply_mod = res_mod.reply_text
+    assert "田中" in reply_mod or "変更" in reply_mod or "5" in reply_mod or "承" in reply_mod
+    print(f"\n[Test E 既存予約変更]:\nAI応答: {reply_mod}\nアクション: {res_mod.action}\n人数: {res_mod.updated_slots.guests}")
+
+    # 3. キャンセル
+    res_cancel = agent.process_utterance(
+        message="今日19時で予約してる田中ですが、急に行けなくなったのでキャンセルでお願いします",
+        current_slots=None,
+        stage="hearing"
+    )
+
+    assert res_cancel.action == "cancel" or "キャンセル" in res_cancel.reply_text
+    reply_cancel = res_cancel.reply_text
+    assert "キャンセル" in reply_cancel
+    print(f"\n[Test E 既存予約キャンセル]:\nAI応答: {reply_cancel}\nアクション: {res_cancel.action}")
+
+    # クリーンアップ
+    db.delete(existing_res)
+    db.commit()
+    db.close()

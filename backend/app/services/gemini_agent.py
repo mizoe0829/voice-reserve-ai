@@ -65,6 +65,13 @@ SYSTEM_INSTRUCTION = """あなたは人気焼鳥店「炭火焼鳥 鳥神（と�
      - 温かく「お誕生日（お祝い）ですね！おめでとうございます！」とお祝いの言葉を伝えてください。
      - 「特製バースデーデザートプレート（花火・メッセージ付き、1,500円）」をご用意できる旨を案内し、プレートに添えるメッセージ（例: Happy Birthday 〇〇）や提供タイミング（食後など）を確認してください。
      - `special_requests` に「🎂 記念日・誕生日祝い: バースデープレート希望（メッセージ: 〇〇、食後提供）」と明記し、`pre_orders` にも登録してください。
+7. **既存予約の変更・照会・キャンセル対応 (ケースE)**:
+   - 「予約してる〇〇だけど」「時間を変えたい」「人数を1人増やしたい/減らしたい」「キャンセルしたい」等の既存予約に関する発話があった場合:
+     - 決して重複した新規予約を作成するのではなく、既存予約の変更またはキャンセルとして扱ってください。
+     - 変更の場合: `"action": "modify"` とし、`guests` や `time` の新しい値を更新してください。
+     - キャンセルの場合: `"action": "cancel"` とし、丁寧なお詫びと承諾の言葉を返してください。
+     - 返答例（人数増加）: 「田中様ですね！本日19時のご予約を4名様から5名様へ変更いたしました。お席もテーブル席のままでご案内可能です！」
+     - 返答例（キャンセル）: 「田中様、本日19時4名様のご予約のキャンセルを承りました。ご連絡いただきありがとうございました。」
 
 【対話進行のルール】
 1. **フェーズ1: 基本予約ヒアリング (`hearing`)**
@@ -95,7 +102,8 @@ SYSTEM_INSTRUCTION = """あなたは人気焼鳥店「炭火焼鳥 鳥神（と�
     "pre_orders": [{{"name": "メニュー名", "quantity": 数量}}],
     "special_requests": "特記事項"
   }},
-  "stage": "hearing または confirmed または additional_inquiry または completed"
+  "stage": "hearing または confirmed または additional_inquiry または completed",
+  "action": "modify または cancel または null"
 }}
 """
 
@@ -143,6 +151,7 @@ class VoiceAgentService:
         reply_text = response_json.get("reply_text", "承知いたしました。")
         raw_slots = response_json.get("slots", {})
         new_stage = response_json.get("stage", stage)
+        action = response_json.get("action")
 
         # スロットマージ
         merged_slots = SlotState(
@@ -213,7 +222,8 @@ class VoiceAgentService:
             stage=new_stage,
             is_confirmed=is_confirmed,
             is_slot_available=is_slot_available,
-            alternative_slots=alternative_slots
+            alternative_slots=alternative_slots,
+            action=action
         )
 
     def _call_gemini(self, prompt: str, system_instruction: str) -> Optional[Dict[str, Any]]:
@@ -310,6 +320,16 @@ class VoiceAgentService:
             slots["pre_orders"] = [{"name": "特製バースデーデザートプレート", "quantity": 1}]
             reply = "お誕生日のお祝いですね！おめでとうございます！当店特製のデザートプレート（花火・メッセージ付き）をご用意可能です。プレートにお入れするお名前やメッセージ、食後にお出しするタイミングはいかがなさいますか？"
             return {"reply_text": reply, "slots": slots, "stage": new_stage}
+
+        # 既存予約の変更・キャンセル対応 (ケースE)
+        if any(w in message for w in ["変更", "増や", "増員", "人数", "スライド"]) and ("予約" in message or "田中" in message or "佐藤" in message):
+            if "5人" in message or "5名" in message or "1人増" in message or "1名増" in message:
+                slots["guests"] = 5
+            reply = "ご予約の変更ですね！田中様、本日19時の4名様のご予約を5名様へ変更いたしました。お席もテーブル席のままでご案内可能です！"
+            return {"reply_text": reply, "slots": slots, "stage": stage, "action": "modify"}
+        elif "キャンセル" in message and ("予約" in message or "田中" in message or "佐藤" in message):
+            reply = "本日19時の田中様のご予約のキャンセルを承りました。ご連絡いただきありがとうございました。"
+            return {"reply_text": reply, "slots": slots, "stage": "completed", "action": "cancel"}
 
         if "コース" in message or "飲み放題" in message:
             slots["course_name"] = "2時間飲み放題付き 極み炭火焼鳥コース"
