@@ -289,3 +289,34 @@ def test_private_room_alternative_table_proposal():
     db.delete(full_priv)
     db.commit()
     db.close()
+
+
+def test_anniversary_birthday_plate_support():
+    """
+    飲食コーナーケース D: 記念日・誕生日プレート（サプライズ対応）
+    - 発話: 「友人の誕生日祝いで行くのですが、サプライズでデザートプレートを用意してもらえますか？」
+    - 期待値:
+      1. AIがお祝いの言葉を述べ、特製バースデープレート（花火・メッセージ付き）を提案
+      2. special_requests または pre_orders にバースデープレートが登録される
+      3. メッセージ内容や提供タイミング（食後など）の確認が行われる
+    """
+    agent = VoiceAgentService()
+
+    current_slots = SlotState(
+        date="2026-11-20",
+        time="19:00",
+        guests=4,
+        seat_type="table",
+        course_name="2時間飲み放題付き 極み炭火焼鳥コース"
+    )
+
+    res = agent.process_utterance(
+        message="実は友人の誕生日祝いで行くのですが、サプライズでデザートプレートを用意してもらえますか？",
+        current_slots=current_slots,
+        stage="hearing"
+    )
+
+    reply = res.reply_text
+    assert "おめでとう" in reply or "お祝い" in reply or "プレート" in reply or "デザート" in reply or "誕生日" in reply
+    assert res.updated_slots.special_requests is not None or len(res.updated_slots.pre_orders) > 0
+    print(f"\n[Test D 記念日・誕生日プレート対応]:\nAI応答: {reply}\n特記事項: {res.updated_slots.special_requests}\nプレオーダー: {res.updated_slots.pre_orders}")

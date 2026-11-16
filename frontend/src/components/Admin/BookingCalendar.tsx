@@ -154,11 +154,27 @@ export const BookingCalendar: React.FC = () => {
 
                   {/* ★ 特記事項（お子様連れ・ベビーカー・記念日など） */}
                   {r.special_requests && (
-                    <div className="mb-2.5 p-2 bg-blue-950/40 rounded-lg border border-blue-500/30">
-                      <div className="text-[11px] font-bold text-blue-400 flex items-center gap-1 mb-0.5">
-                        <span>👶 店内・席配慮（特記事項）</span>
+                    <div className={`mb-2.5 p-2 rounded-lg border ${
+                      r.special_requests.includes('誕生') || r.special_requests.includes('記念') || r.special_requests.includes('お祝')
+                        ? 'bg-purple-950/40 border-purple-500/40'
+                        : 'bg-blue-950/40 border-blue-500/30'
+                    }`}>
+                      <div className={`text-[11px] font-bold flex items-center gap-1 mb-0.5 ${
+                        r.special_requests.includes('誕生') || r.special_requests.includes('記念') || r.special_requests.includes('お祝')
+                          ? 'text-purple-300'
+                          : 'text-blue-400'
+                      }`}>
+                        <span>
+                          {r.special_requests.includes('誕生') || r.special_requests.includes('記念') || r.special_requests.includes('お祝')
+                            ? '🎂 サプライズ・記念日演出！'
+                            : '👶 店内・席配慮（特記事項）'}
+                        </span>
                       </div>
-                      <div className="text-xs font-semibold text-blue-200">
+                      <div className={`text-xs font-semibold ${
+                        r.special_requests.includes('誕生') || r.special_requests.includes('記念') || r.special_requests.includes('お祝')
+                          ? 'text-purple-200'
+                          : 'text-blue-200'
+                      }`}>
                         {r.special_requests}
                       </div>
                     </div>

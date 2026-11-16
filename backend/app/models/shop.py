@@ -16,7 +16,8 @@ DEFAULT_PRE_ORDERS = [
     {"id": "food_kushimori", "name": "職人おまかせ炭火串焼き5種盛り合わせ", "category": "food", "price": 1180, "description": "炭火で香ばしく焼き上げてお出しします"},
     {"id": "food_tsukune", "name": "名物・月見つくね串（本数指定）", "category": "food", "price": 380, "description": "秘伝タレと濃厚卵黄の看板串"},
     {"id": "food_karaage", "name": "秘伝醤油仕込み 若鶏のジューシー唐揚げ", "category": "food", "price": 780, "description": "外はカリッと中はジューシーな熱々唐揚げ"},
-    {"id": "food_edamame", "name": "スピードおつまみ 茶豆の枝豆", "category": "food", "price": 450, "description": "着席と同時にすぐ乾杯できるスピード前菜"}
+    {"id": "food_edamame", "name": "スピードおつまみ 茶豆の枝豆", "category": "food", "price": 450, "description": "着席と同時にすぐ乾杯できるスピード前菜"},
+    {"id": "food_birthday_plate", "name": "特製バースデーデザートプレート（花火・メッセージ付き）", "category": "food", "price": 1500, "description": "記念日・誕生日サプライズ演出用プレート"}
 ]
 
 # 店舗FAQ知識
