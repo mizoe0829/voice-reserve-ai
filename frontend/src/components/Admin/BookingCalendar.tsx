@@ -13,6 +13,7 @@ interface ReservationItem {
   phone_number: string;
   allergies: string[];
   pre_orders: Array<{ name: string; quantity: number }>;
+  special_requests?: string | null;
   status: string;
   created_at: string;
 }
@@ -151,6 +152,18 @@ export const BookingCalendar: React.FC = () => {
                     </div>
                   )}
 
+                  {/* ★ 特記事項（お子様連れ・ベビーカー・記念日など） */}
+                  {r.special_requests && (
+                    <div className="mb-2.5 p-2 bg-blue-950/40 rounded-lg border border-blue-500/30">
+                      <div className="text-[11px] font-bold text-blue-400 flex items-center gap-1 mb-0.5">
+                        <span>👶 店内・席配慮（特記事項）</span>
+                      </div>
+                      <div className="text-xs font-semibold text-blue-200">
+                        {r.special_requests}
+                      </div>
+                    </div>
+                  )}
+
                   {/* ★ 事前オーダー（来店即出しドリンク・料理） */}
                   {r.pre_orders && r.pre_orders.length > 0 && (
                     <div className="p-2.5 bg-orange-950/30 rounded-lg border border-orange-500/30">
@@ -194,6 +207,7 @@ export const BookingCalendar: React.FC = () => {
                 <th className="py-3 px-3">コース</th>
                 <th className="py-3 px-3">アレルギー</th>
                 <th className="py-3 px-3">事前注文</th>
+                <th className="py-3 px-3">特記事項・配慮</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -210,6 +224,9 @@ export const BookingCalendar: React.FC = () => {
                   </td>
                   <td className="py-3 px-3 text-orange-300">
                     {r.pre_orders?.map((p) => `${p.name}x${p.quantity}`).join(', ') || '-'}
+                  </td>
+                  <td className="py-3 px-3 text-blue-300">
+                    {r.special_requests || '-'}
                   </td>
                 </tr>
               ))}

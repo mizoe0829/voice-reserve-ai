@@ -45,6 +45,12 @@ SYSTEM_INSTRUCTION = """あなたは人気焼鳥店「炭火焼鳥 鳥神（と�
      - **お客様の質問文をスロット（お名前や特記事項など）に誤って代入してはいけません**。
      - 上記【店舗FAQ知識】に基づいて、まず親切に疑問へ回答してください。
      - その上で、「〜お答えになっておりますでしょうか？それでは、ご予約のお手続きに戻りまして、[現在伺っている質問] を教えていただけますでしょうか？」と**1つの発話の中で自然に予約手続きへと会話を復帰**させてください。
+3. **お子様連れ・ベビーカー・乳幼児への配慮 (ケースA)**:
+   - 「子供」「幼児」「赤ちゃん」「ベビーカー」の発言があった場合:
+     - 人数（`guests`）は大人＋子供の合計人数としてください。
+     - 席種（`seat_type`）は危険なカウンター席を避け、必ず「テーブル席 (table)」または「個室 (private)」にしてください。
+     - 特記事項（`special_requests`）に「大人○名・子供○名、ベビーカー○台あり、子供用食器希望」等を明確に記録してください。
+     - 返答でも「お子様連れ大歓迎です！ベビーカーを横付けできる広めのテーブル席をご用意いたしますね。子供用の食器等もご準備しておきます！」と温かく安心感のある言葉を添えてください。
 
 【対話進行のルール】
 1. **フェーズ1: 基本予約ヒアリング (`hearing`)**
@@ -239,6 +245,20 @@ class VoiceAgentService:
         elif "個室" in message and ("料金" in message or "別料金" in message or "かかる" in message or "無料" in message):
             reply = "個室料金やチャージ料は一切いただいておりませんのでご安心ください！…それでは、ご予約のお手続きを進めさせていただきますね。お名前とお電話番号を伺えますでしょうか？"
             return {"reply_text": reply, "slots": slots, "stage": new_stage}
+
+        # お子様連れ・ベビーカー対応 (ケースA)
+        if "子供" in message or "子" in message or "幼児" in message or "ベビーカー" in message:
+            slots["seat_type"] = "table"
+            adults_m = re.search(r'大人\s*(?:が)?\s*(\d+)\s*(?:人|名)?', message)
+            kids_m = re.search(r'子(?:供|ども)?\s*(?:が)?\s*(\d+)\s*(?:人|名)?', message)
+            if adults_m and kids_m:
+                a_count = int(adults_m.group(1))
+                k_count = int(kids_m.group(1))
+                slots["guests"] = a_count + k_count
+                slots["special_requests"] = f"大人{a_count}名、子供{k_count}名（ベビーカーあり、子供用食器希望）"
+            elif "ベビーカー" in message:
+                slots["special_requests"] = "お子様連れ（ベビーカーあり、子供用食器希望）"
+            reply = "お子様連れでのご来店ですね、大歓迎です！ベビーカーを横付けできるよう広めのテーブル席をご用意いたしますね。子供用食器もお出ししておきます！"
 
         if "コース" in message or "飲み放題" in message:
             slots["course_name"] = "2時間飲み放題付き 極み炭火焼鳥コース"

@@ -152,3 +152,33 @@ def test_faq_interruption_and_resumption():
     assert "駐車場" in reply or "パーキング" in reply
     assert "名前" in reply or "電話番号" in reply or "予約" in reply
     print(f"\n[Test 2-2 FAQ割り込み応答]:\n{reply}")
+
+
+def test_children_and_stroller_handling():
+    """
+    飲食コーナーケース A: 子連れ・ベビーカー・乳幼児の席調整
+    - 発話: 「大人3人と、子供が1人いて、ベビーカーも1台持っていきたいんですけど予約できますか？」
+    - 期待値:
+      1. 人数: 合計4名（大人3＋子供1）
+      2. 席種: 危険なカウンターを避け「テーブル席（table）」
+      3. 特記事項（special_requests）: 「大人3名、子供1名、ベビーカー」等の情報が記録される
+      4. 返答: 歓迎の言葉と「広めのテーブル席」「子供用食器」等の配慮が案内される
+    """
+    agent = VoiceAgentService()
+
+    res = agent.process_utterance(
+        message="大人3人と、幼稚園の子供が1人いて、ベビーカーも1台持っていきたいんですけど予約できますか？",
+        current_slots=None,
+        stage="hearing"
+    )
+
+    # 1. 人数
+    assert res.updated_slots.guests == 4
+    # 2. 席種
+    assert res.updated_slots.seat_type in ["table", "private"]
+    # 3. 特記事項
+    assert res.updated_slots.special_requests is not None
+    # 4. 返答の温かみと配慮
+    reply = res.reply_text
+    assert "テーブル" in reply or "お席" in reply or "お子様" in reply
+    print(f"\n[Test A 子連れ・ベビーカー対応]:\nスロット: guests={res.updated_slots.guests}, seat={res.updated_slots.seat_type}, special={res.updated_slots.special_requests}\nAI応答: {reply}")
