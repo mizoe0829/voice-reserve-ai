@@ -6,7 +6,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
 from app.schemas.dialog import SlotState, DialogueResponse
-from app.models.shop import Shop, get_active_preset_key, get_preset_config
+from app.models.shop import Shop, get_active_preset_key, INDUSTRY_SEEDS
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +28,18 @@ def build_system_instruction(
         faqs = shop.faqs_json or {}
         add_prompt = shop.additional_inquiry_prompt or "ご同席の皆様でアレルギーや苦手な食材、または事前にご用意できるお料理やお飲み物のご希望はございますか？"
     else:
-        cfg = get_preset_config(get_active_preset_key())
-        industry_type = cfg["industry_type"]
+        active_code = get_active_preset_key()
+        ind_seed = next((s for s in INDUSTRY_SEEDS if s["code"] == active_code), INDUSTRY_SEEDS[0])
+        industry_type = ind_seed["code"]
         default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
-        shop_name = cfg["name"] if cfg["name"] else default_name
-        open_time = cfg["open_time"]
-        close_time = cfg["close_time"]
-        persona_desc = cfg["persona_description"]
-        courses = cfg["courses"]
-        pre_orders = cfg["pre_orders"]
-        faqs = cfg["faqs"]
-        add_prompt = cfg["additional_inquiry_prompt"]
+        shop_name = default_name
+        open_time = "15:00" if industry_type == "ryokan" else "17:00"
+        close_time = "10:00" if industry_type == "ryokan" else "23:30"
+        persona_desc = ind_seed["default_persona"]
+        courses = []
+        pre_orders = []
+        faqs = ind_seed["default_faqs"]
+        add_prompt = ind_seed["default_inquiry"]
 
     courses_lines = []
     for c in courses:
@@ -312,12 +313,13 @@ class VoiceAgentService:
             courses = shop.courses_json or []
             faqs = shop.faqs_json or {}
         else:
-            cfg = get_preset_config(get_active_preset_key())
-            industry_type = cfg.get("industry_type", "restaurant")
+            active_code = get_active_preset_key()
+            ind_seed = next((s for s in INDUSTRY_SEEDS if s["code"] == active_code), INDUSTRY_SEEDS[0])
+            industry_type = ind_seed["code"]
             default_name = "当館" if industry_type == "ryokan" else ("当院" if industry_type == "clinic" else "当店")
-            shop_name = cfg["name"] if cfg.get("name") else default_name
-            courses = cfg["courses"]
-            faqs = cfg["faqs"]
+            shop_name = default_name
+            courses = []
+            faqs = ind_seed["default_faqs"]
 
         default_course_name = courses[0]["name"] if courses else "人気定番コース"
 

@@ -3,7 +3,7 @@ import datetime
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine, Base
 from app.models.reservation import Reservation
-from app.models.shop import Shop
+from app.models.shop import Shop, Industry
 from app.schemas.dialog import SlotState
 from app.services.booking_service import BookingService
 from app.services.gemini_agent import VoiceAgentService
@@ -391,11 +391,14 @@ def test_dynamic_industry_presets_ryokan_and_dental():
     """
     db: Session = SessionLocal()
 
-    # 1. 旅館プリセットへ切り替え（テンプレ初期状態: name と pre_orders は空）
+    # 1. 旅館プリセットへ切り替え（親Industryにリレーションされ、初期状態は空テンプレ）
     ryokan_shop = BookingService.get_or_create_shop(db, preset_key="ryokan")
-    assert ryokan_shop.name == ""  # DB管理のため初期状態は空
-    assert ryokan_shop.pre_order_items_json == []  # DB管理のため初期状態は空
+    assert ryokan_shop.name == ""  # 初期は空設定のテンプレ
+    assert ryokan_shop.pre_order_items_json == []  # 初期は空設定のテンプレ
     assert ryokan_shop.industry_type == "ryokan"
+    assert ryokan_shop.industry is not None
+    assert ryokan_shop.industry.name == "宿泊・温泉旅館"
+    assert "温泉旅館" in ryokan_shop.persona_description
 
     # DB側で施設固有の名前とオプションを登録・管理
     ryokan_shop.name = "嬉野温泉 翠月楼"
@@ -421,11 +424,18 @@ def test_dynamic_industry_presets_ryokan_and_dental():
     )
     assert "翠月楼" in res_greet.reply_text
 
-    # 2. 歯科クリニックプリセットへ切り替え
+    # 2. 歯科クリニックプリセットへ切り替え（親Industry: clinic にリレーションされた初期空テンプレ）
     dental_shop = BookingService.get_or_create_shop(db, preset_key="clinic_dental")
     assert dental_shop.industry_type == "clinic"
+    assert dental_shop.industry.name == "医療・クリニック"
+    assert dental_shop.name == ""  # 初期は空設定のテンプレ
     assert "初診" in dental_shop.additional_inquiry_prompt
     assert "麻酔" in dental_shop.additional_inquiry_prompt
+
+    # DB側で個別店舗（医院）名を登録
+    dental_shop.name = "さくら歯科・矯正クリニック"
+    db.commit()
+    db.refresh(dental_shop)
 
     res_dental = agent.process_utterance(
         message="予約を取りたいです",

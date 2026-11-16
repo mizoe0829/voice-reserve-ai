@@ -3,58 +3,70 @@ import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from app.models.reservation import Reservation
-from app.models.shop import Shop, get_active_preset_key, get_preset_config
+from app.models.shop import Shop, Industry, INDUSTRY_SEEDS, get_active_preset_key
 from app.schemas.dialog import SlotState
 
 class BookingService:
     @classmethod
-    def get_or_create_shop(cls, db: Session, preset_key: Optional[str] = None) -> Shop:
-        target_preset = preset_key or get_active_preset_key()
-        cfg = get_preset_config(target_preset)
+    def seed_industries_if_needed(cls, db: Session) -> None:
+        """親業種マスター（Industry）が存在しなければ初期シード投入"""
+        for item in INDUSTRY_SEEDS:
+            exists = db.query(Industry).filter(Industry.code == item["code"]).first()
+            if not exists:
+                ind = Industry(
+                    code=item["code"],
+                    name=item["name"],
+                    default_persona_template=item["default_persona"],
+                    default_inquiry_template=item["default_inquiry"],
+                    default_faqs=item["default_faqs"]
+                )
+                db.add(ind)
+        db.commit()
 
-        shop = db.query(Shop).first()
+    @classmethod
+    def get_or_create_shop(cls, db: Session, preset_key: Optional[str] = None) -> Shop:
+        """
+        業種親テーブル（Industry）に個別店舗（Shop）をリレーションさせて取得または生成。
+        初期生成時は個別店舗側は空設定のテンプレ（name="", pre_order_items=[], courses=[]）となります。
+        """
+        cls.seed_industries_if_needed(db)
+        
+        target_code = preset_key or get_active_preset_key()
+        if target_code in ["yakitori", "restaurant"]:
+            target_code = "restaurant"
+        elif target_code in ["ryokan", "hotel"]:
+            target_code = "ryokan"
+        elif target_code in ["clinic", "clinic_dental", "dental"]:
+            target_code = "clinic"
+
+        industry = db.query(Industry).filter(Industry.code == target_code).first()
+        if not industry:
+            industry = db.query(Industry).first()
+
+        # 当該親業種に紐づく個別店舗を検索
+        shop = db.query(Shop).filter(Shop.industry_id == industry.id).first() if industry else None
         if not shop:
+            # 当該業種の子店舗テンプレを新規作成（初期は空設定）
             shop = Shop(
-                preset_key=target_preset,
-                name=cfg["name"],
-                industry_type=cfg["industry_type"],
-                address=cfg["address"],
-                google_place_id=cfg["google_place_id"],
-                total_seats=cfg["total_seats"],
-                table_seats=cfg["table_seats"],
-                counter_seats=cfg["counter_seats"],
-                private_rooms=cfg["private_rooms"],
-                open_time=cfg["open_time"],
-                close_time=cfg["close_time"],
-                persona_description=cfg["persona_description"],
-                courses_json=cfg["courses"],
-                pre_order_items_json=cfg["pre_orders"],
-                faqs_json=cfg["faqs"],
-                additional_inquiry_prompt=cfg["additional_inquiry_prompt"]
+                industry_id=industry.id if industry else None,
+                industry_code=target_code,
+                name="",  # 初期は空設定のテンプレ
+                address="",
+                google_place_id="",
+                total_seats=20 if target_code == "ryokan" else 40,
+                table_seats=12 if target_code == "ryokan" else 24,
+                counter_seats=0 if target_code == "ryokan" else 8,
+                private_rooms=8,
+                open_time="15:00" if target_code == "ryokan" else "17:00",
+                close_time="10:00" if target_code == "ryokan" else "23:30",
+                courses_json=[],
+                pre_order_items_json=[],
+                faqs_json=industry.default_faqs if industry else {}
             )
             db.add(shop)
             db.commit()
             db.refresh(shop)
-        elif shop.preset_key != target_preset or not shop.persona_description:
-            # プリセット変更時の動的同期
-            shop.preset_key = target_preset
-            shop.name = cfg["name"]
-            shop.industry_type = cfg["industry_type"]
-            shop.address = cfg["address"]
-            shop.google_place_id = cfg["google_place_id"]
-            shop.total_seats = cfg["total_seats"]
-            shop.table_seats = cfg["table_seats"]
-            shop.counter_seats = cfg["counter_seats"]
-            shop.private_rooms = cfg["private_rooms"]
-            shop.open_time = cfg["open_time"]
-            shop.close_time = cfg["close_time"]
-            shop.persona_description = cfg["persona_description"]
-            shop.courses_json = cfg["courses"]
-            shop.pre_order_items_json = cfg["pre_orders"]
-            shop.faqs_json = cfg["faqs"]
-            shop.additional_inquiry_prompt = cfg["additional_inquiry_prompt"]
-            db.commit()
-            db.refresh(shop)
+
         return shop
 
     @classmethod

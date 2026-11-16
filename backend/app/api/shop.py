@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.booking_service import BookingService
-from app.models.shop import Shop
+from app.models.shop import Shop, Industry
 
 router = APIRouter()
 
@@ -22,23 +22,42 @@ class ShopUpdateRequest(BaseModel):
     faqs: Optional[Dict[str, str]] = None
     additional_inquiry_prompt: Optional[str] = None
 
+@router.get("/industries")
+def get_industries(db: Session = Depends(get_db)):
+    """登録されている親業種マスター一覧を返す"""
+    BookingService.seed_industries_if_needed(db)
+    industries = db.query(Industry).all()
+    return [
+        {
+            "id": ind.id,
+            "code": ind.code,
+            "name": ind.name,
+            "default_persona": ind.default_persona_template,
+            "default_inquiry": ind.default_inquiry_template,
+            "default_faqs": ind.default_faqs
+        }
+        for ind in industries
+    ]
+
 @router.get("/shop")
 def get_shop_info(db: Session = Depends(get_db)):
-    """店舗マスタ情報・コース一覧・事前注文メニューを返す"""
+    """店舗マスタ情報・親業種リレーション・コース・事前注文メニューを返す"""
     shop = BookingService.get_or_create_shop(db)
     return {
         "id": shop.id,
         "name": shop.name,
+        "industry_id": shop.industry_id,
         "industry_type": shop.industry_type,
+        "industry_name": shop.industry.name if shop.industry else "未設定",
         "address": shop.address,
         "google_place_id": shop.google_place_id,
         "total_seats": shop.total_seats,
         "open_time": shop.open_time,
         "close_time": shop.close_time,
         "persona_description": shop.persona_description,
-        "courses": shop.courses_json,
-        "pre_order_items": shop.pre_order_items_json,
-        "faqs": shop.faqs_json,
+        "courses": shop.courses_json or [],
+        "pre_order_items": shop.pre_order_items_json or [],
+        "faqs": shop.faqs_json or {},
         "additional_inquiry_prompt": shop.additional_inquiry_prompt
     }
 
@@ -49,7 +68,10 @@ def update_shop_info(req: ShopUpdateRequest, db: Session = Depends(get_db)):
     if req.name is not None:
         shop.name = req.name
     if req.industry_type is not None:
-        shop.industry_type = req.industry_type
+        target_ind = db.query(Industry).filter(Industry.code == req.industry_type).first()
+        if target_ind:
+            shop.industry_id = target_ind.id
+            shop.industry_code = target_ind.code
     if req.address is not None:
         shop.address = req.address
     if req.google_place_id is not None:
@@ -61,7 +83,7 @@ def update_shop_info(req: ShopUpdateRequest, db: Session = Depends(get_db)):
     if req.close_time is not None:
         shop.close_time = req.close_time
     if req.persona_description is not None:
-        shop.persona_description = req.persona_description
+        shop.custom_persona_description = req.persona_description
     if req.courses is not None:
         shop.courses_json = req.courses
     if req.pre_order_items is not None:
@@ -69,14 +91,16 @@ def update_shop_info(req: ShopUpdateRequest, db: Session = Depends(get_db)):
     if req.faqs is not None:
         shop.faqs_json = req.faqs
     if req.additional_inquiry_prompt is not None:
-        shop.additional_inquiry_prompt = req.additional_inquiry_prompt
+        shop.custom_additional_inquiry_prompt = req.additional_inquiry_prompt
 
     db.commit()
     db.refresh(shop)
     return {
         "id": shop.id,
         "name": shop.name,
+        "industry_id": shop.industry_id,
         "industry_type": shop.industry_type,
+        "industry_name": shop.industry.name if shop.industry else "未設定",
         "address": shop.address,
         "courses": shop.courses_json,
         "pre_order_items": shop.pre_order_items_json
