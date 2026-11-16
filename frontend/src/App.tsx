@@ -25,6 +25,8 @@ export default function App() {
   });
   const [stage, setStage] = useState<string>('hearing');
   const [bookingCode, setBookingCode] = useState<string | null>(null);
+  const [isSlotAvailable, setIsSlotAvailable] = useState<boolean>(true);
+  const [alternativeSlots, setAlternativeSlots] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -65,6 +67,12 @@ export default function App() {
       if (data.booking_code) {
         setBookingCode(data.booking_code);
       }
+      if (data.is_slot_available !== undefined) {
+        setIsSlotAvailable(data.is_slot_available);
+      }
+      if (data.alternative_slots) {
+        setAlternativeSlots(data.alternative_slots);
+      }
 
       // ボットの返答をチャットに追加
       const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -103,6 +111,8 @@ export default function App() {
     });
     setStage('hearing');
     setBookingCode(null);
+    setIsSlotAvailable(true);
+    setAlternativeSlots([]);
     setMessages([]);
   };
 
@@ -190,6 +200,11 @@ export default function App() {
                 slots={slots}
                 stage={stage}
                 bookingCode={bookingCode}
+                isSlotAvailable={isSlotAvailable}
+                alternativeSlots={alternativeSlots}
+                onSelectAlternativeSlot={(alt) => {
+                  handleSendMessage(`じゃあ${alt}でお願いします`);
+                }}
               />
             </div>
           </div>

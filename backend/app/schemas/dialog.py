@@ -25,3 +25,5 @@ class DialogueResponse(BaseModel):
     stage: str
     is_confirmed: bool = False
     booking_code: Optional[str] = None
+    is_slot_available: bool = True
+    alternative_slots: List[str] = []

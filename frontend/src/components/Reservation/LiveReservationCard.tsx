@@ -19,6 +19,9 @@ interface LiveReservationCardProps {
   stage: string;
   bookingCode?: string | null;
   shopName?: string;
+  isSlotAvailable?: boolean;
+  alternativeSlots?: string[];
+  onSelectAlternativeSlot?: (slot: string) => void;
 }
 
 export const LiveReservationCard: React.FC<LiveReservationCardProps> = ({
@@ -26,6 +29,9 @@ export const LiveReservationCard: React.FC<LiveReservationCardProps> = ({
   stage,
   bookingCode,
   shopName = '炭火焼鳥 鳥神 渋谷本店',
+  isSlotAvailable = true,
+  alternativeSlots = [],
+  onSelectAlternativeSlot,
 }) => {
   const isConfirmed = stage === 'confirmed' || stage === 'additional_inquiry' || stage === 'completed';
   const isCompleted = stage === 'completed';
@@ -98,6 +104,30 @@ export const LiveReservationCard: React.FC<LiveReservationCardProps> = ({
             {slots.time ? `${slots.time} 〜` : 'お伺い中...'}
           </div>
         </div>
+
+        {/* 満席警告 & 代替枠提案チップ */}
+        {!isSlotAvailable && alternativeSlots.length > 0 && (
+          <div className="sm:col-span-2 p-3.5 bg-red-950/40 border border-red-500/40 rounded-xl animate-fadeIn">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-red-400 mb-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
+              <span>ご希望の時間（{slots.time}）は満席です。空き枠候補:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {alternativeSlots.map((alt, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSelectAlternativeSlot?.(alt)}
+                  className="px-3 py-1 bg-red-900/60 hover:bg-orange-600 text-white rounded-lg text-xs font-medium border border-red-400/40 transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                  title="この候補で予約を続ける"
+                >
+                  <span className="text-amber-300">💡</span>
+                  <span>{alt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 人数 */}
         <div className={`p-3 rounded-xl border transition-all ${

@@ -18,7 +18,8 @@ def handle_dialogue(req: DialogueRequest, db: Session = Depends(get_db)):
     resp = agent_service.process_utterance(
         message=req.message,
         current_slots=req.current_slots,
-        stage=req.stage
+        stage=req.stage,
+        availability_checker=lambda d, t, g: BookingService.check_availability_and_find_alternatives(db, d, t, g)
     )
 
     # 確定または追加ヒアリング完了時のDB登録

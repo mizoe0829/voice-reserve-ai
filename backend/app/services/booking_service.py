@@ -34,6 +34,60 @@ class BookingService:
         return (current_guests + guests) <= shop.total_seats
 
     @classmethod
+    def check_availability_and_find_alternatives(
+        cls, db: Session, date: str, time: str, guests: int
+    ) -> Dict[str, Any]:
+        """
+        指定枠の空席を判定し、満枠の場合は同日の近傍時間枠および翌日の同時間枠から
+        案内可能な代替枠（候補リスト）を自動算出する
+        """
+        is_avail = cls.check_availability(db, date, time, guests)
+        if is_avail:
+            return {"is_available": True, "alternatives": []}
+
+        # 満枠時の代替候補探索
+        alternatives = []
+        candidate_times = [
+            "17:00", "17:30", "18:00", "18:30",
+            "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"
+        ]
+
+        # 同日の近傍時間枠を探索（希望時間に近い順）
+        if time in candidate_times:
+            idx = candidate_times.index(time)
+            # 前後1枠〜3枠を順に探索
+            offsets = [1, -1, 2, -2, 3, -3]
+            for offset in offsets:
+                cand_idx = idx + offset
+                if 0 <= cand_idx < len(candidate_times):
+                    cand_time = candidate_times[cand_idx]
+                    if cls.check_availability(db, date, cand_time, guests):
+                        alternatives.append(f"同日 {cand_time}")
+                        if len(alternatives) >= 2:
+                            break
+        else:
+            for cand_time in candidate_times:
+                if cls.check_availability(db, date, cand_time, guests):
+                    alternatives.append(f"同日 {cand_time}")
+                    if len(alternatives) >= 2:
+                        break
+
+        # 翌日の同一時間枠を探索
+        try:
+            curr_d = datetime.date.fromisoformat(date)
+            next_d = curr_d + datetime.timedelta(days=1)
+            next_d_str = next_d.isoformat()
+            if cls.check_availability(db, next_d_str, time, guests):
+                alternatives.append(f"翌日 {time}")
+        except Exception:
+            pass
+
+        return {
+            "is_available": False,
+            "alternatives": alternatives
+        }
+
+    @classmethod
     def save_or_update_reservation(
         cls,
         db: Session,

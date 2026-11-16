@@ -75,7 +75,8 @@ class VoiceAgentService:
         self,
         message: str,
         current_slots: Optional[SlotState] = None,
-        stage: str = "hearing"
+        stage: str = "hearing",
+        availability_checker: Optional[Any] = None
     ) -> DialogueResponse:
         now = datetime.datetime.now()
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -120,13 +121,41 @@ class VoiceAgentService:
             special_requests=raw_slots.get("special_requests") or (current_slots.special_requests if current_slots else None)
         )
 
-        is_confirmed = (new_stage in ["confirmed", "additional_inquiry", "completed"])
+        is_slot_available = True
+        alternative_slots = []
+
+        # 空席チェック & 満枠時の代替枠探索
+        if merged_slots.date and merged_slots.time and merged_slots.guests and availability_checker:
+            avail_result = availability_checker(merged_slots.date, merged_slots.time, merged_slots.guests)
+            if not avail_result.get("is_available", True):
+                is_slot_available = False
+                alternative_slots = avail_result.get("alternatives", [])
+                # 満枠時は確定ステージに進めない
+                new_stage = "hearing"
+                
+                # 満枠時の代替提案プロンプトで返答を再生成
+                alts_str = "、または".join(alternative_slots) if alternative_slots else "別のお日にち"
+                refusal_prompt = f"""【緊急指令: 空席照会結果】
+お客様が希望された日時（{merged_slots.date} {merged_slots.time}、{merged_slots.guests}名）は現在満席で予約できません！
+案内可能な代替枠: {alts_str}
+
+お客様に希望時間が満席であることを丁寧にお詫びした上で、上記の代替候補枠（{alts_str}）をご提案してください。
+予約確定（confirmed）には絶対にしないでください。親切かつ聞き取りやすい音声テキストで返答してください。"""
+                alt_resp = self._call_gemini(refusal_prompt, sys_inst)
+                if alt_resp and alt_resp.get("reply_text"):
+                    reply_text = alt_resp["reply_text"]
+                else:
+                    reply_text = f"大変申し訳ございません！あいにく{merged_slots.time}のお時間は満席をいただいております。もしよろしければ、{alts_str}でしたらお席をご用意できますが、いかがでしょうか？"
+
+        is_confirmed = (new_stage in ["confirmed", "additional_inquiry", "completed"]) and is_slot_available
 
         return DialogueResponse(
             reply_text=reply_text,
             updated_slots=merged_slots,
             stage=new_stage,
-            is_confirmed=is_confirmed
+            is_confirmed=is_confirmed,
+            is_slot_available=is_slot_available,
+            alternative_slots=alternative_slots
         )
 
     def _call_gemini(self, prompt: str, system_instruction: str) -> Optional[Dict[str, Any]]:
@@ -166,12 +195,25 @@ class VoiceAgentService:
         new_stage = stage
 
         if "人" in message or "名" in message:
-            import re
             m = re.search(r'(\d+)\s*(?:人|名)', message)
             if m: slots["guests"] = int(m.group(1))
 
-        if "時" in message or ":" in message:
-            slots["time"] = "19:00"
+        # 日付パース
+        date_m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', message)
+        if date_m:
+            slots["date"] = f"{int(date_m.group(1)):04d}-{int(date_m.group(2)):02d}-{int(date_m.group(3)):02d}"
+        else:
+            md_m = re.search(r'(\d{1,2})月(\d{1,2})日', message)
+            if md_m:
+                year = datetime.datetime.now().year
+                slots["date"] = f"{year}-{int(md_m.group(1)):02d}-{int(md_m.group(2)):02d}"
+
+        # 時間パース
+        time_m = re.search(r'(\d{1,2})\s*(?:時|:)(\d{2})?', message)
+        if time_m:
+            hour = int(time_m.group(1))
+            minute = int(time_m.group(2)) if time_m.group(2) else (30 if "半" in message else 0)
+            slots["time"] = f"{hour:02d}:{minute:02d}"
 
         if "コース" in message or "飲み放題" in message:
             slots["course_name"] = "2時間飲み放題付き 極み炭火焼鳥コース"
