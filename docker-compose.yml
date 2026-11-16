@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voice-reserve-backend
+    ports:
+      - "8001:8001"
+    volumes:
+      # SQLite DBファイルをホスト側に永続化
+      - ./backend/data:/app/data
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - DATABASE_URL=sqlite:///./data/voice_reserve.db
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voice-reserve-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
