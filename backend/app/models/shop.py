@@ -19,6 +19,15 @@ DEFAULT_PRE_ORDERS = [
     {"id": "food_edamame", "name": "スピードおつまみ 茶豆の枝豆", "category": "food", "price": 450, "description": "着席と同時にすぐ乾杯できるスピード前菜"}
 ]
 
+# 店舗FAQ知識
+DEFAULT_FAQS = {
+    "parking": "店舗裏手に提携コインパーキングが2台分ございます。ご利用のお客様にはお会計時に1時間無料サービス券をお渡ししております。",
+    "private_room_fee": "個室料・チャージ料は一切いただいておりません。ご安心ください。",
+    "payment": "現金、各種クレジットカード（VISA/Master/JCB/Amex等）、およびPayPayなどのQRコード決済に対応しております。",
+    "smoking": "全席完全禁煙となっております（店舗の外に喫煙スペースを設けております）。",
+    "invoice": "インボイス制度（適格請求書）に対応した領収書の発行が可能です。"
+}
+
 class Shop(Base):
     __tablename__ = "shops"
 

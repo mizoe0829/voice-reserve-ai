@@ -87,3 +87,68 @@ def test_full_slot_alternative_proposal():
     db.delete(full_res)
     db.commit()
     db.close()
+
+
+def test_self_correction_speech():
+    """
+    コーナーケース 2-1: 発話内での自己訂正（取り消し・言い直し）
+    - 「3名で…いや、子供も1人増えて4名でお願いします」
+    - 「11月21日の18時で…あ、違った11月22日の19時で！」
+    """
+    agent = VoiceAgentService()
+
+    # 1. 人数の自己訂正
+    res1 = agent.process_utterance(
+        message="3名で…あ、いや、子供が1人増えたので4名でお願いします！",
+        current_slots=None,
+        stage="hearing"
+    )
+    assert res1.updated_slots.guests == 4
+    print(f"\n[Test 2-1 人数訂正] 抽出人数: {res1.updated_slots.guests}名 (期待値: 4名)")
+
+    # 2. 日時・時間の自己訂正
+    res2 = agent.process_utterance(
+        message="11月21日の18時で…あ、違った、11月22日の19時でお願いできますか？",
+        current_slots=res1.updated_slots,
+        stage="hearing"
+    )
+    assert res2.updated_slots.date == f"{datetime.datetime.now().year}-11-22"
+    assert res2.updated_slots.time == "19:00"
+    print(f"[Test 2-1 日時訂正] 抽出日時: {res2.updated_slots.date} {res2.updated_slots.time} (期待値: 11-22 19:00)")
+
+
+def test_faq_interruption_and_resumption():
+    """
+    コーナーケース 2-2: FAQ質問の割り込みと本筋への自動復帰
+    - 名前ヒアリングの段階で「あ、その前に車で行くんですけど、駐車場ってありますか？」と割り込み
+    - 期待値:
+      1. customer_name に質問文が入らない
+      2. 返答に「提携コインパーキング」「2台」等の回答が含まれる
+      3. 返答の末尾で「お名前とお電話番号」のヒアリングへ自動復帰している
+    """
+    agent = VoiceAgentService()
+    current_slots = SlotState(
+        date="2026-11-22",
+        time="19:00",
+        guests=4,
+        seat_type="table",
+        customer_name=None,
+        phone_number=None
+    )
+
+    res = agent.process_utterance(
+        message="あ、その前に車で行く予定なんですけど、お店に駐車場ってありますか？",
+        current_slots=current_slots,
+        stage="hearing"
+    )
+
+    # 1. スロット汚染がないこと
+    assert res.updated_slots.customer_name is None
+    assert res.updated_slots.date == "2026-11-22"
+    assert res.updated_slots.time == "19:00"
+
+    # 2. FAQへの回答と予約本筋への復帰が両立していること
+    reply = res.reply_text
+    assert "駐車場" in reply or "パーキング" in reply
+    assert "名前" in reply or "電話番号" in reply or "予約" in reply
+    print(f"\n[Test 2-2 FAQ割り込み応答]:\n{reply}")

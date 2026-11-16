@@ -28,6 +28,24 @@ SYSTEM_INSTRUCTION = """あなたは人気焼鳥店「炭火焼鳥 鳥神（と�
   - 秘伝仕込み 若鶏のジューシー唐揚げ(780円)
   - 茶豆の枝豆(450円)
 
+【店舗FAQ知識（質問への回答用）】
+- 駐車場: 店舗専用駐車場はございませんが、すぐ裏手に提携コインパーキングが2台分ございます（お会計時に1時間無料サービス券をお渡しします）。
+- 個室料金: 個室料金やチャージ料は一切いただいておりません（無料です）。
+- 支払い方法: 現金、各種クレジットカード（VISA/Master/JCB/Amex等）、およびPayPay等のQRコード決済に対応しております。
+- 喫煙/禁煙: 全席完全禁煙です（店舗の外に喫煙スペースがございます）。
+- インボイス: 適格請求書（インボイス）対応の領収書を発行可能です。
+
+【人間特有の発話の乱れへの対応ルール】
+1. **自己訂正・取り消しへの対応 (ケース2-1)**:
+   - お客様が発話内で「あ、違った」「じゃなくて」「やっぱり〇〇で」「間違えました」と訂正した場合、**取り消された情報は絶対にスロットに入れないでください**。
+   - 例:「水曜日の14時で…あ、違った木曜の14時で！」→ dateは木曜、timeは14:00とする（水曜は破棄）。
+   - 例:「3名で…いや、子供も1人増えて4名で」→ guestsは4とする。
+2. **FAQ質問の割り込みと予約本筋への自動復帰 (ケース2-2)**:
+   - 予約手続きの途中で、お客様が「駐車場はある？」「カード使える？」「個室って別料金かかる？」などの質問を挟んだ場合:
+     - **お客様の質問文をスロット（お名前や特記事項など）に誤って代入してはいけません**。
+     - 上記【店舗FAQ知識】に基づいて、まず親切に疑問へ回答してください。
+     - その上で、「〜お答えになっておりますでしょうか？それでは、ご予約のお手続きに戻りまして、[現在伺っている質問] を教えていただけますでしょうか？」と**1つの発話の中で自然に予約手続きへと会話を復帰**させてください。
+
 【対話進行のルール】
 1. **フェーズ1: 基本予約ヒアリング (`hearing`)**
    - 必要な情報: 来店日時（YYYY-MM-DD, HH:MM）、人数、席種、コース、お名前、お電話番号。
@@ -195,25 +213,32 @@ class VoiceAgentService:
         new_stage = stage
 
         if "人" in message or "名" in message:
-            m = re.search(r'(\d+)\s*(?:人|名)', message)
-            if m: slots["guests"] = int(m.group(1))
+            # 自己訂正対応: 複数言及された場合は最後の数値を採用
+            all_guests = re.findall(r'(\d+)\s*(?:人|名)', message)
+            if all_guests: slots["guests"] = int(all_guests[-1])
 
-        # 日付パース
-        date_m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', message)
-        if date_m:
-            slots["date"] = f"{int(date_m.group(1)):04d}-{int(date_m.group(2)):02d}-{int(date_m.group(3)):02d}"
-        else:
-            md_m = re.search(r'(\d{1,2})月(\d{1,2})日', message)
-            if md_m:
-                year = datetime.datetime.now().year
-                slots["date"] = f"{year}-{int(md_m.group(1)):02d}-{int(md_m.group(2)):02d}"
+        # 日付パース（自己訂正対応: 複数言及された場合は最後のマッチを採用）
+        all_md = list(re.finditer(r'(\d{1,2})月(\d{1,2})日', message))
+        if all_md:
+            last_md = all_md[-1]
+            year = datetime.datetime.now().year
+            slots["date"] = f"{year}-{int(last_md.group(1)):02d}-{int(last_md.group(2)):02d}"
 
-        # 時間パース
-        time_m = re.search(r'(\d{1,2})\s*(?:時|:)(\d{2})?', message)
-        if time_m:
-            hour = int(time_m.group(1))
-            minute = int(time_m.group(2)) if time_m.group(2) else (30 if "半" in message else 0)
+        # 時間パース（自己訂正対応: 複数言及された場合は最後のマッチを採用）
+        all_time = list(re.finditer(r'(\d{1,2})\s*(?:時|:)(\d{2})?', message))
+        if all_time:
+            last_t = all_time[-1]
+            hour = int(last_t.group(1))
+            minute = int(last_t.group(2)) if last_t.group(2) else (30 if "半" in message[last_t.start():] else 0)
             slots["time"] = f"{hour:02d}:{minute:02d}"
+
+        # FAQ割り込み検知
+        if "駐車場" in message:
+            reply = "はい、店舗裏手に提携コインパーキングが2台分ございます（お会計時に1時間無料サービス券をお渡しします）。…お答えになっておりますでしょうか？それではご予約のお手続きに戻りまして、お客様のお名前とお電話番号を教えていただけますでしょうか？"
+            return {"reply_text": reply, "slots": slots, "stage": new_stage}
+        elif "個室" in message and ("料金" in message or "別料金" in message or "かかる" in message or "無料" in message):
+            reply = "個室料金やチャージ料は一切いただいておりませんのでご安心ください！…それでは、ご予約のお手続きを進めさせていただきますね。お名前とお電話番号を伺えますでしょうか？"
+            return {"reply_text": reply, "slots": slots, "stage": new_stage}
 
         if "コース" in message or "飲み放題" in message:
             slots["course_name"] = "2時間飲み放題付き 極み炭火焼鳥コース"
