@@ -28,7 +28,7 @@ export const LiveReservationCard: React.FC<LiveReservationCardProps> = ({
   slots,
   stage,
   bookingCode,
-  shopName = '炭火焼鳥 鳥神 渋谷本店',
+  shopName = 'ご予約プレビュー',
   isSlotAvailable = true,
   alternativeSlots = [],
   onSelectAlternativeSlot,

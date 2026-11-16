@@ -3,20 +3,56 @@ import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from app.models.reservation import Reservation
-from app.models.shop import Shop, DEFAULT_COURSES, DEFAULT_PRE_ORDERS
+from app.models.shop import Shop, get_active_preset_key, get_preset_config
 from app.schemas.dialog import SlotState
 
 class BookingService:
     @classmethod
-    def get_or_create_shop(cls, db: Session) -> Shop:
+    def get_or_create_shop(cls, db: Session, preset_key: Optional[str] = None) -> Shop:
+        target_preset = preset_key or get_active_preset_key()
+        cfg = get_preset_config(target_preset)
+
         shop = db.query(Shop).first()
         if not shop:
-            shop = Shop(courses_json=DEFAULT_COURSES, pre_order_items_json=DEFAULT_PRE_ORDERS)
+            shop = Shop(
+                preset_key=target_preset,
+                name=cfg["name"],
+                industry_type=cfg["industry_type"],
+                address=cfg["address"],
+                google_place_id=cfg["google_place_id"],
+                total_seats=cfg["total_seats"],
+                table_seats=cfg["table_seats"],
+                counter_seats=cfg["counter_seats"],
+                private_rooms=cfg["private_rooms"],
+                open_time=cfg["open_time"],
+                close_time=cfg["close_time"],
+                persona_description=cfg["persona_description"],
+                courses_json=cfg["courses"],
+                pre_order_items_json=cfg["pre_orders"],
+                faqs_json=cfg["faqs"],
+                additional_inquiry_prompt=cfg["additional_inquiry_prompt"]
+            )
             db.add(shop)
             db.commit()
             db.refresh(shop)
-        elif not shop.pre_order_items_json:
-            shop.pre_order_items_json = DEFAULT_PRE_ORDERS
+        elif shop.preset_key != target_preset or not shop.persona_description:
+            # プリセット変更時の動的同期
+            shop.preset_key = target_preset
+            shop.name = cfg["name"]
+            shop.industry_type = cfg["industry_type"]
+            shop.address = cfg["address"]
+            shop.google_place_id = cfg["google_place_id"]
+            shop.total_seats = cfg["total_seats"]
+            shop.table_seats = cfg["table_seats"]
+            shop.counter_seats = cfg["counter_seats"]
+            shop.private_rooms = cfg["private_rooms"]
+            shop.open_time = cfg["open_time"]
+            shop.close_time = cfg["close_time"]
+            shop.persona_description = cfg["persona_description"]
+            shop.courses_json = cfg["courses"]
+            shop.pre_order_items_json = cfg["pre_orders"]
+            shop.faqs_json = cfg["faqs"]
+            shop.additional_inquiry_prompt = cfg["additional_inquiry_prompt"]
             db.commit()
             db.refresh(shop)
         return shop

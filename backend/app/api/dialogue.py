@@ -15,6 +15,8 @@ def handle_dialogue(req: DialogueRequest, db: Session = Depends(get_db)):
     ユーザーの発話テキストを受け取り、Geminiでスロット抽出・返答生成を行い、
     リアルタイム予約カード情報と返答音声を返す。
     """
+    shop = BookingService.get_or_create_shop(db)
+
     resp = agent_service.process_utterance(
         message=req.message,
         current_slots=req.current_slots,
@@ -22,7 +24,8 @@ def handle_dialogue(req: DialogueRequest, db: Session = Depends(get_db)):
         availability_checker=lambda d, t, g, s="table": (
             BookingService.check_seat_type_availability(db, d, t, g, s) if s == "private"
             else BookingService.check_availability_and_find_alternatives(db, d, t, g)
-        )
+        ),
+        shop=shop
     )
 
     # 既存予約の変更またはキャンセル時のDB反映

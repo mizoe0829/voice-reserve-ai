@@ -378,3 +378,59 @@ def test_existing_reservation_modification_and_cancellation():
     db.delete(existing_res)
     db.commit()
     db.close()
+
+def test_dynamic_industry_presets_ryokan_and_dental():
+    """
+    業態テンプレート・動的プリセット切り替えテスト:
+    1. 旅館プリセット（嬉野温泉 翠月楼）への切り替え
+       - 伊万里牛・竹崎カキ・竹崎蟹・温泉湯豆腐、貸切風呂などの独自料理・FAQが取得できること
+       - エージェントが嬉野温泉の挨拶とFAQ回答を行うこと
+    2. 歯科クリニックプリセット（さくら歯科・矯正クリニック）への切り替え
+       - 初診/再診、麻酔アレルギー、痛みトリアージなどのヒアリングプロンプトが反映されること
+    """
+    db: Session = SessionLocal()
+
+    # 1. 旅館プリセットへ切り替え
+    ryokan_shop = BookingService.get_or_create_shop(db, preset_key="ryokan")
+    assert ryokan_shop.name == "嬉野温泉 翠月楼（すいげつろう）"
+    assert ryokan_shop.industry_type == "ryokan"
+    course_names = [c["name"] for c in ryokan_shop.courses_json]
+    pre_order_names = [p["name"] for p in ryokan_shop.pre_order_items_json]
+    assert any("伊万里牛" in n for n in course_names)
+    assert any("温泉湯豆腐" in n for n in course_names)
+    assert any("竹崎カキ" in n for n in pre_order_names)
+    assert any("竹崎蟹" in n for n in pre_order_names)
+    assert any("貸切" in n for n in pre_order_names)
+
+    # 旅館プリセットでのAI応答テスト（挨拶と温泉FAQ）
+    agent = VoiceAgentService()
+    res_greet = agent.process_utterance(
+        message="予約をお願いしたいのですが",
+        shop=ryokan_shop
+    )
+    assert "翠月楼" in res_greet.reply_text
+
+    # 旅館FAQ（貸切風呂）
+    res_faq = agent.process_utterance(
+        message="家族風呂や貸切風呂はありますか？",
+        shop=ryokan_shop
+    )
+    assert "貸切" in res_faq.reply_text or "風呂" in res_faq.reply_text or "翠月楼" in res_faq.reply_text
+
+    # 2. 歯科クリニックプリセットへ切り替え
+    dental_shop = BookingService.get_or_create_shop(db, preset_key="clinic_dental")
+    assert dental_shop.name == "さくら歯科・矯正クリニック"
+    assert dental_shop.industry_type == "clinic"
+    assert "初診" in dental_shop.additional_inquiry_prompt
+    assert "麻酔" in dental_shop.additional_inquiry_prompt
+
+    res_dental = agent.process_utterance(
+        message="予約を取りたいです",
+        shop=dental_shop
+    )
+    assert "さくら歯科" in res_dental.reply_text
+
+    # 最後にデフォルトの yakitori に戻しておく
+    BookingService.get_or_create_shop(db, preset_key="yakitori")
+    db.close()
+

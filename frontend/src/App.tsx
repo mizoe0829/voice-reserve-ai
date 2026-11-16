@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { VoiceController } from './components/Voice/VoiceController';
 import { LiveReservationCard, SlotState } from './components/Reservation/LiveReservationCard';
 import { TranscriptHistory, ChatMessage } from './components/Chat/TranscriptHistory';
@@ -7,8 +7,30 @@ import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
 import { Sparkles, UtensilsCrossed, CalendarDays, RotateCcw } from 'lucide-react';
 
+interface ShopInfo {
+  id: number;
+  name: string;
+  industry_type: string;
+  address: string;
+  open_time: string;
+  close_time: string;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'voice' | 'admin'>('voice');
+  const [shopInfo, setShopInfo] = useState<ShopInfo | null>(null);
+
+  // 初回マウント時に店舗マスタ情報を取得
+  useEffect(() => {
+    fetch('/api/shop')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.name) {
+          setShopInfo(data);
+        }
+      })
+      .catch((err) => console.error('Failed to load shop info:', err));
+  }, []);
 
   // スロット状態 ＆ 会話ステージ
   const [slots, setSlots] = useState<SlotState>({
@@ -126,8 +148,13 @@ export default function App() {
               <UtensilsCrossed className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-base font-black tracking-tight text-slate-100">
+              <h1 className="text-base font-black tracking-tight text-slate-100 flex items-center gap-2">
                 VoiceReserve AI
+                {shopInfo && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-orange-950/80 text-orange-300 border border-orange-800/60 font-sans">
+                    {shopInfo.name}
+                  </span>
+                )}
               </h1>
               <p className="text-[10px] text-orange-400 font-semibold uppercase tracking-wider">
                 問い合わせ不要！音声ダイレクト予約ボット
@@ -200,6 +227,7 @@ export default function App() {
                 slots={slots}
                 stage={stage}
                 bookingCode={bookingCode}
+                shopName={shopInfo?.name}
                 isSlotAvailable={isSlotAvailable}
                 alternativeSlots={alternativeSlots}
                 onSelectAlternativeSlot={(alt) => {
